@@ -1,5 +1,7 @@
 *.class
 *.log
+*~
+*.iml
 
 # sbt specific
 .cache
