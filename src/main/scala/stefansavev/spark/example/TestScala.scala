@@ -10,6 +10,60 @@ import scala.reflect.internal.util.ScalaClassLoader.{URLClassLoader =>ScalaUrlCl
 
 /** Computes an approximation to pi */
 object SparkPi {
+
+  //TODO: make the serialization more efficient (look for Data Serialization in the guide below)
+  //https://spark.apache.org/docs/0.8.1/tuning.html
+
+  class MyCounter(var v1: Int, var v2: Int) extends Serializable{
+    def addTo(inc1: Int, inc2: Int): Unit = {
+      v1 += inc1
+      v2 += inc2
+    }
+
+    def mergeInto(other: MyCounter): Unit = {
+      v1 += other.v1
+      v2 += other.v2
+    }
+  }
+
+  object MyCounter{
+    def zero(): MyCounter = new MyCounter(0, 0)
+
+    def fromValues(v1: Int, v2: Int): MyCounter = {
+      new MyCounter(v1, v2)
+    }
+  }
+
+
+  implicit object MyCounterAccumulatorParam extends AccumulatorParam[MyCounter] {
+    def addInPlace(t1: MyCounter, t2: MyCounter): MyCounter = {
+      new MyCounter(t1.v1 + t2.v1, t1.v2 + t2.v2)
+    }
+
+    def zero(initialValue: MyCounter): MyCounter = MyCounter.zero()
+  }
+
+
+  def myaccum(spark: SparkContext, slices: Int = 2): Unit = {
+    val singleData = 1 to 10000
+    val tupleData = singleData.zip(singleData)
+    val distData = spark.parallelize(tupleData, slices)
+    val a1 = spark.accumulator(0)
+    val a2 = spark.accumulator(0)
+    val a12 = spark.accumulator(MyCounter.zero())
+
+    distData.foreach{case (v1,v2) => {
+      a1 += v1
+      a2 += v2
+      a12 += (MyCounter.fromValues(v1, v2))
+    }}
+    println(a1.value)
+    println(a2.value)
+    val v12 = a12.value
+    println(s"value: ${v12.v1} --- ${v12.v2}")
+  }
+
+
   def run(spark: SparkContext, slices: Int = 2): Unit = {
     /* run with reflection
     val cl = new ScalaUrlClassLaoder(Seq(new URL("jar:file:///home/stefan2/spark/myexample/spark-example/target/my-spark-example-0.0.1-SNAPSHOT.jar!/")), sc.getClass.getClassLoader)
@@ -42,7 +96,8 @@ object SparkPi {
     val conf = new SparkConf().setAppName("Spark Pi")
     val spark = new SparkContext(conf)
     val slices = if (args.length > 0) args(0).toInt else 2
-    run(spark, slices)
+    //run(spark, slices)
+    myaccum(spark, slices)
     spark.stop()
   }
 }
