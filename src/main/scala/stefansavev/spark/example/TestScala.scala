@@ -2,6 +2,8 @@ package stefansavev.spark.example
 
 import java.net.URL
 
+import org.apache.spark.rdd.RDD
+
 import scala.math.random
 
 import org.apache.spark._
@@ -64,6 +66,41 @@ object SparkPi {
   }
 
 
+  def reduceByKeyExample(spark: SparkContext, slices: Int = 2): Unit = {
+    //see: countApproxDistinctByKey in PairRDDFunctions
+
+    val keys = 1 to 10000
+    val values = (1 to 10000).map(_ + 1)
+    val tupleData = keys.zip(values)
+    val distData = spark.parallelize(tupleData, slices)
+
+    def mergeCounters(a: MyCounter, b: MyCounter): MyCounter = {
+      val copy = new MyCounter(a.v1, a.v2)
+      copy.mergeInto(b)
+      copy
+    }
+
+    val out: RDD[(Int, String)] = distData.map{case (k,v) => (k, new MyCounter(v,v))}.
+                                      reduceByKey(mergeCounters).
+                                      map{case (k,c) => (k,c.v1 + ", " + c.v2)}
+
+    val some100: Array[(Int, String)] = out.take(100)
+    for(kv <- some100){
+      println(kv)
+    }
+    /*
+    def merge(a: Int, b: Int): Int = {
+      a + b
+    }
+
+    val out: RDD[(Int, Int)] = distData.reduceByKey(merge)
+    val some100 = out.take(100)
+    for(kv <- some100){
+      println(kv)
+    }
+    */
+  }
+
   def run(spark: SparkContext, slices: Int = 2): Unit = {
     /* run with reflection
     val cl = new ScalaUrlClassLaoder(Seq(new URL("jar:file:///home/stefan2/spark/myexample/spark-example/target/my-spark-example-0.0.1-SNAPSHOT.jar!/")), sc.getClass.getClassLoader)
@@ -97,7 +134,8 @@ object SparkPi {
     val spark = new SparkContext(conf)
     val slices = if (args.length > 0) args(0).toInt else 2
     //run(spark, slices)
-    myaccum(spark, slices)
+    //myaccum(spark, slices)
+    reduceByKeyExample(spark, slices)
     spark.stop()
   }
 }
